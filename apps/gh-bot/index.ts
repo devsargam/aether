@@ -8,18 +8,16 @@ import {
 import { createServer, IncomingMessage, ServerResponse } from "node:http";
 import { Queue, QueueEvents } from "bullmq";
 import IORedis from "ioredis";
-import { QUEUE_NAME } from "@aether/common";
+import { JOB_NAMES, QUEUE_NAME } from "@aether/common";
 
 const connection = new IORedis({
   host: process.env.REDIS_HOST!,
   port: Number(process.env.REDIS_PORT!),
-  maxRetriesPerRequest: null,
 });
 
 const queue = new Queue(QUEUE_NAME, { connection });
 const queueEvents = new QueueEvents(QUEUE_NAME, { connection });
 
-// GitHub App instance (for installation tokens)
 const githubApp = new App({
   appId: process.env.GITHUB_APP_ID!,
   privateKey: process.env.GITHUB_APP_PRIVATE_KEY!.replace(/\\n/g, "\n"),
@@ -28,7 +26,6 @@ const githubApp = new App({
   },
 });
 
-// OAuth App setup (for user authentication)
 const oauthApp = new OAuthApp({
   clientType: "github-app",
   clientId: process.env.GITHUB_APP_CLIENT_ID!,
@@ -41,12 +38,10 @@ oauthApp.on("token", async ({ token, octokit }) => {
   console.log(`Token retrieved for ${data.login}`);
 });
 
-// Webhook setup
 const webhooks = new Webhooks({
   secret: process.env.GITHUB_APP_WEBHOOK_SECRET!,
 });
 
-// Queue event listeners for job completion
 queueEvents.on("completed", async ({ jobId, returnvalue }) => {
   console.log(`✓ Job ${jobId} completed with result:`, returnvalue);
 
@@ -78,12 +73,8 @@ queueEvents.on("completed", async ({ jobId, returnvalue }) => {
 
 queueEvents.on("failed", async ({ jobId, failedReason }) => {
   console.error(`✗ Job ${jobId} failed: ${failedReason}`);
-
-  // Note: We can't easily get job data from failed event without fetching the job
-  // Error comments are best handled in the webhook handler
 });
 
-// Webhook event handlers
 webhooks.on("issues.opened", async ({ payload }) => {
   console.log(`Issue opened: ${payload.issue.title}`);
 });
@@ -114,7 +105,6 @@ webhooks.on("pull_request.opened", async ({ payload }) => {
   console.log(`PR opened in ${repo} on branch ${ref}`);
 
   try {
-    // Get installation octokit and token
     const octokit = await githubApp.getInstallationOctokit(installationId);
     const { data: installationToken } = await octokit.request(
       "POST /app/installations/{installation_id}/access_tokens",
@@ -123,15 +113,14 @@ webhooks.on("pull_request.opened", async ({ payload }) => {
       }
     );
 
-    // Add clone job to queue for forge service to process
-    const job = await queue.add("clone-repository", {
+    const job = await queue.add(JOB_NAMES.CLONE_REPOSITORY, {
       token: installationToken.token,
       repo,
       branch: ref,
       prNumber,
       owner,
       repoName,
-      installationId, // Pass for later use in completion handler
+      installationId,
     });
 
     console.log(
@@ -191,7 +180,7 @@ webhooks.on("pull_request.reopened", async ({ payload }) => {
     );
 
     // Add clone job to queue for forge service to process
-    const job = await queue.add("clone-repository", {
+    const job = await queue.add(JOB_NAMES.CLONE_REPOSITORY, {
       token: installationToken.token,
       repo,
       branch: ref,
