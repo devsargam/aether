@@ -1,0 +1,501 @@
+# GitHub Apps Development Rules
+
+## Core Principles
+
+- Use `@octokit/oauth-app` for GitHub App OAuth flows
+- GitHub Apps do not support scopes (unlike OAuth Apps)
+- GitHub Apps use `clientType: "github-app"` with client IDs starting with `lv1.`
+- Prefer expiring user tokens for enhanced security
+
+## Authentication & Token Management
+
+### OAuth App Initialization
+
+```typescript
+import { OAuthApp, createNodeMiddleware } from "@octokit/oauth-app";
+
+const app = new OAuthApp({
+  clientType: "github-app", // Required for GitHub Apps
+  clientId: "lv1.xxxx", // GitHub App client ID
+  clientSecret: "xxxx", // GitHub App client secret
+});
+```
+
+### Token Events
+
+Always handle token lifecycle events:
+
+```typescript
+app.on("token", async ({ token, octokit, expiresAt }) => {
+  // Handle token creation/refresh
+  // Automatically called for token.created, token.refreshed, token.scoped
+});
+
+app.on("token.deleted", async ({ token }) => {
+  // Clean up when tokens are deleted
+});
+
+app.on("authorization.deleted", async ({ token }) => {
+  // Handle when user revokes app authorization
+});
+```
+
+**Available Events:**
+
+- `token.created` - New OAuth token created
+- `token.reset` - Token was reset
+- `token.refreshed` - Token auto-refreshed (GitHub Apps only)
+- `token.scoped` - Scoped token created (GitHub Apps only)
+- `token.deleted` - Token invalidated
+- `authorization.deleted` - Authorization revoked
+
+### Token Auto-Refresh
+
+If expiring user tokens are enabled for your GitHub App, tokens will automatically refresh:
+
+```typescript
+const octokit = await app.getUserOctokit({ code: "code123" });
+// octokit will automatically refresh expired tokens
+```
+
+## API Endpoints
+
+Default middleware exposes these routes (prefix: `/api/github/oauth`):
+
+| Route            | Method | Description                                                        |
+| ---------------- | ------ | ------------------------------------------------------------------ |
+| `/login`         | GET    | Redirects to GitHub authorization (accepts `?state` and `?scopes`) |
+| `/callback`      | GET    | **OAuth callback endpoint** (GitHub redirects here after auth)     |
+| `/token`         | POST   | Exchange authorization code for token                              |
+| `/token`         | GET    | Check token validity                                               |
+| `/token`         | PATCH  | Reset token (invalidate + return new)                              |
+| `/refresh-token` | PATCH  | Refresh expiring token                                             |
+| `/token/scoped`  | POST   | Create scoped token (GitHub Apps only)                             |
+| `/token`         | DELETE | Logout (invalidate token)                                          |
+| `/grant`         | DELETE | Revoke authorization (uninstall)                                   |
+
+## Callback URL Configuration
+
+**For local development:**
+
+```
+http://localhost:{PORT}/api/github/oauth/callback
+```
+
+**For production:**
+
+```
+https://your-domain.com/api/github/oauth/callback
+```
+
+Configure this in your GitHub App settings under "OAuth callback URL".
+
+## Webhook Configuration
+
+### Webhook URL Setup
+
+**For local development (using tunnel like ngrok, localtunnel, or smee.io):**
+
+```
+https://your-tunnel-url.ngrok.io/api/github/webhook
+```
+
+**For production:**
+
+```
+https://your-domain.com/api/github/webhook
+```
+
+Configure this in your GitHub App settings under "Webhook URL".
+
+### Webhook Setup with @octokit/webhooks
+
+```typescript
+import {
+  Webhooks,
+  createNodeMiddleware as createWebhookMiddleware,
+} from "@octokit/webhooks";
+
+const webhooks = new Webhooks({
+  secret: process.env.GITHUB_APP_WEBHOOK_SECRET, // Set in GitHub App settings
+});
+
+// Handle specific events
+webhooks.on("issues.opened", async ({ payload }) => {
+  console.log(`Issue opened: ${payload.issue.title}`);
+});
+
+webhooks.on("pull_request.opened", async ({ payload }) => {
+  console.log(`PR opened: ${payload.pull_request.title}`);
+});
+
+webhooks.on("push", async ({ payload }) => {
+  console.log(`Push to ${payload.repository.full_name}`);
+});
+
+// Handle all events
+webhooks.onAny(async ({ name, payload }) => {
+  console.log(`Received webhook event: ${name}`);
+});
+
+// Mount webhook middleware
+app.use("/api/github/webhook", createWebhookMiddleware(webhooks));
+```
+
+### Webhook Secret
+
+Generate a secure webhook secret and configure it in:
+
+1. GitHub App settings → Webhook secret field
+2. Your application environment variables
+
+```bash
+# Generate a secure secret (example)
+openssl rand -hex 20
+```
+
+### Local Development with Webhooks
+
+Since GitHub can't reach localhost directly, use a tunnel service:
+
+**Using smee.io (recommended for testing):**
+
+```bash
+npm install --global smee-client
+smee -u https://smee.io/your-channel -t http://localhost:4000/api/github/webhook
+```
+
+**Using ngrok:**
+
+```bash
+ngrok http 4000
+# Use the generated HTTPS URL in GitHub App settings
+```
+
+### Available Webhook Events
+
+Common events to handle:
+
+- `issues` - Issue events (opened, edited, closed, etc.)
+- `pull_request` - PR events (opened, closed, merged, etc.)
+- `push` - Code pushed to repository
+- `pull_request_review` - PR review submitted
+- `pull_request_review_comment` - Comment on PR review
+- `issue_comment` - Comment on issue or PR
+- `commit_comment` - Comment on commit
+- `create` - Branch or tag created
+- `delete` - Branch or tag deleted
+- `release` - Release published
+- `repository` - Repository created, deleted, etc.
+- `installation` - App installed/uninstalled
+- `installation_repositories` - Repositories added/removed from installation
+
+Full list: https://docs.github.com/en/webhooks/webhook-events-and-payloads
+
+### Custom Path Prefix
+
+```typescript
+const middleware = createNodeMiddleware(app, {
+  pathPrefix: "/custom/path", // Callback becomes /custom/path/callback
+});
+```
+
+## Middleware Options
+
+### Node.js (Express/Native HTTP)
+
+```typescript
+import { createNodeMiddleware } from "@octokit/oauth-app";
+import { createServer } from "node:http";
+
+const middleware = createNodeMiddleware(app, {
+  pathPrefix: "/api/github/oauth", // Optional, defaults to this
+});
+
+createServer(middleware).listen(3000);
+```
+
+### Cloudflare Workers / Deno
+
+```typescript
+import { createWebWorkerHandler } from "@octokit/oauth-app";
+
+const handleRequest = createWebWorkerHandler(app);
+```
+
+### AWS Lambda (API Gateway V2)
+
+```typescript
+import { createAWSLambdaAPIGatewayV2Handler } from "@octokit/oauth-app";
+
+export const handler = createAWSLambdaAPIGatewayV2Handler(app);
+```
+
+## Token Operations
+
+### Get User Octokit Instance
+
+```typescript
+// After OAuth callback with code
+const octokit = await app.getUserOctokit({ code: "code123" });
+```
+
+### Check Token Validity
+
+```typescript
+const {
+  created_at,
+  app: appInfo,
+  user,
+} = await app.checkToken({
+  token: "usertoken123",
+});
+```
+
+### Reset Token
+
+```typescript
+const { data, authentication } = await app.resetToken({
+  token: "token123",
+});
+// Old token is now invalid, use authentication.token
+```
+
+### Refresh Token (GitHub Apps Only)
+
+```typescript
+const { data, authentication } = await app.refreshToken({
+  refreshToken: "refreshtoken123",
+});
+```
+
+### Scope Token (GitHub Apps Only)
+
+Limit access to specific installation, repositories, and permissions:
+
+```typescript
+const { data, authentication } = await app.scopeToken({
+  token: "usertoken123",
+  target: "octokit", // Organization or user name
+  repositories: ["oauth-app.js"],
+  permissions: {
+    issues: "write",
+    contents: "read",
+  },
+});
+```
+
+### Delete Token (Logout)
+
+```typescript
+await app.deleteToken({ token: "token123" });
+```
+
+### Delete Authorization (Uninstall)
+
+```typescript
+await app.deleteAuthorization({ token: "token123" });
+// All tokens are revoked, app must be re-authorized
+```
+
+## Web Flow
+
+### 1. Generate Authorization URL
+
+```typescript
+const { url } = app.getWebFlowAuthorizationUrl({
+  state: "random-state-string", // CSRF protection
+  login: "suggested-username", // Optional
+  redirectUrl: "https://your-domain.com/custom-callback", // Optional
+  allowSignup: true, // Optional
+});
+
+// Redirect user to `url`
+```
+
+### 2. Handle Callback
+
+The middleware automatically handles the callback at `/api/github/oauth/callback` and triggers the `token` event.
+
+```typescript
+app.on("token", async ({ token, octokit, authentication }) => {
+  // Save token to database
+  // Authenticate user in your app
+  const { data: user } = await octokit.request("GET /user");
+});
+```
+
+## Device Flow
+
+For CLI apps or devices without browsers:
+
+```typescript
+const { token } = await app.createToken({
+  async onVerification(verification) {
+    console.log("Open:", verification.verification_uri);
+    console.log("Enter code:", verification.user_code);
+    // Wait for user to complete authorization
+  },
+});
+```
+
+## Custom Octokit Configuration
+
+### For GitHub Enterprise
+
+```typescript
+import { Octokit } from "@octokit/core";
+
+const app = new OAuthApp({
+  clientId: "...",
+  clientSecret: "...",
+  Octokit: Octokit.defaults({
+    baseUrl: "https://github.enterprise.com/api/v3",
+  }),
+});
+```
+
+### With Plugins
+
+```typescript
+import { Octokit } from "@octokit/core";
+import { retry } from "@octokit/plugin-retry";
+import { throttling } from "@octokit/plugin-throttling";
+
+const MyOctokit = Octokit.plugin(retry, throttling);
+
+const app = new OAuthApp({
+  clientId: "...",
+  clientSecret: "...",
+  Octokit: MyOctokit.defaults({
+    throttle: {
+      /* options */
+    },
+  }),
+});
+```
+
+## Security Best Practices
+
+1. **Use expiring user tokens** - Enable in GitHub App settings
+2. **Validate state parameter** - Prevent CSRF attacks
+3. **Store tokens securely** - Use encrypted database storage
+4. **Implement token refresh** - Handle expiration gracefully
+5. **Use scoped tokens** - Limit access to minimum required permissions
+6. **Validate webhook signatures** - Verify GitHub webhook authenticity
+7. **Use environment variables** - Never hardcode credentials
+8. **Implement rate limiting** - Respect GitHub API limits
+9. **Log token events** - Monitor for suspicious activity
+10. **Revoke on logout** - Delete tokens when users log out
+
+## Environment Variables
+
+```bash
+# GitHub App OAuth
+GITHUB_APP_CLIENT_ID=lv1.xxxx
+GITHUB_APP_CLIENT_SECRET=xxxx
+GITHUB_APP_REDIRECT_URL=https://your-domain.com/api/github/oauth/callback
+
+# GitHub App Webhooks
+GITHUB_APP_WEBHOOK_SECRET=xxxx
+
+# Server
+NODE_ENV=production
+PORT=3000
+```
+
+## Error Handling
+
+```typescript
+try {
+  const octokit = await app.getUserOctokit({ code: "code123" });
+} catch (error) {
+  if (error.status === 401) {
+    // Invalid or expired token
+  } else if (error.status === 404) {
+    // Token not found
+  } else {
+    // Other errors
+    console.error(error);
+  }
+}
+```
+
+## Testing
+
+Use mocks for testing OAuth flows:
+
+```typescript
+const app = new OAuthApp({
+  clientId: "test-client-id",
+  clientSecret: "test-client-secret",
+});
+
+// Mock token event
+app.on("token", async ({ token, octokit }) => {
+  // Test token handling
+});
+```
+
+## Common Patterns
+
+### Store User Token
+
+```typescript
+app.on("token.created", async ({ token, authentication, octokit }) => {
+  const { data: user } = await octokit.request("GET /user");
+
+  await database.users.upsert({
+    githubId: user.id,
+    username: user.login,
+    accessToken: encrypt(authentication.token),
+    refreshToken: encrypt(authentication.refreshToken),
+    expiresAt: authentication.expiresAt,
+  });
+});
+```
+
+### Automatic Token Refresh
+
+```typescript
+async function getOctokit(userId: string) {
+  const user = await database.users.findById(userId);
+
+  return await app.getUserOctokit({
+    token: decrypt(user.accessToken),
+    refreshToken: decrypt(user.refreshToken),
+    expiresAt: user.expiresAt,
+  });
+  // Token automatically refreshes if expired
+}
+```
+
+### Scoped Access for Organization
+
+```typescript
+async function getScopedOctokit(
+  token: string,
+  org: string,
+  repos: Array<string>
+) {
+  const { authentication } = await app.scopeToken({
+    token,
+    target: org,
+    repositories: repos,
+    permissions: {
+      contents: "read",
+      issues: "write",
+      pull_requests: "write",
+    },
+  });
+
+  return await app.getUserOctokit({ token: authentication.token });
+}
+```
+
+## Resources
+
+- [GitHub Apps Documentation](https://docs.github.com/en/apps)
+- [@octokit/oauth-app on GitHub](https://github.com/octokit/oauth-app.js)
+- [GitHub App Permissions](https://docs.github.com/en/rest/overview/permissions-required-for-github-apps)
+- [Octokit Documentation](https://github.com/octokit/octokit.js)
