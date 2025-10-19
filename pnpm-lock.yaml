@@ -57,6 +57,9 @@ importers:
 
   apps/forge:
     dependencies:
+      '@aether/common':
+        specifier: workspace:*
+        version: link:../../packages/common
       bullmq:
         specifier: ^5.61.0
         version: 5.61.0
@@ -79,6 +82,9 @@ importers:
 
   apps/gh-bot:
     dependencies:
+      '@aether/common':
+        specifier: workspace:*
+        version: link:../../packages/common
       '@octokit/app':
         specifier: ^16.1.1
         version: 16.1.1
@@ -144,6 +150,15 @@ importers:
       eslint:
         specifier: ^9.34.0
         version: 9.34.0
+      typescript:
+        specifier: 5.9.2
+        version: 5.9.2
+
+  packages/common:
+    devDependencies:
+      '@repo/typescript-config':
+        specifier: workspace:*
+        version: link:../typescript-config
       typescript:
         specifier: 5.9.2
         version: 5.9.2

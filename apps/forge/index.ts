@@ -4,6 +4,7 @@ import IORedis from "ioredis";
 import { simpleGit } from "simple-git";
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
+import { QUEUE_NAME } from "@aether/common";
 
 const connection = new IORedis({
   host: process.env.REDIS_HOST!,
@@ -50,7 +51,7 @@ async function cloneRepository(
 
 // Create worker to process clone jobs
 const worker = new Worker(
-  "aether-pulse",
+  QUEUE_NAME,
   async (job) => {
     console.log(`Processing job ${job.id}: ${job.name}`);
 

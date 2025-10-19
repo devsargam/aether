@@ -8,6 +8,7 @@ import {
 import { createServer, IncomingMessage, ServerResponse } from "node:http";
 import { Queue, QueueEvents } from "bullmq";
 import IORedis from "ioredis";
+import { QUEUE_NAME } from "@aether/common";
 
 const connection = new IORedis({
   host: process.env.REDIS_HOST!,
@@ -15,8 +16,8 @@ const connection = new IORedis({
   maxRetriesPerRequest: null,
 });
 
-const queue = new Queue("aether-pulse", { connection });
-const queueEvents = new QueueEvents("aether-pulse", { connection });
+const queue = new Queue(QUEUE_NAME, { connection });
+const queueEvents = new QueueEvents(QUEUE_NAME, { connection });
 
 // GitHub App instance (for installation tokens)
 const githubApp = new App({
