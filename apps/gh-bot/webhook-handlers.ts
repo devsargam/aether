@@ -31,20 +31,28 @@ async function handlePullRequestOpened(payload: any) {
     });
 
     console.log(
-      `✓ Added clone job to queue for PR #${prNumber} (Job ID: ${job.id})`
+      `Added clone job to queue for PR #${prNumber} (Job ID: ${job.id})`
     );
 
-    await octokit.request(
+    const { data: comment } = await octokit.request(
       "POST /repos/{owner}/{repo}/issues/{issue_number}/comments",
       {
         owner,
         repo: repoName,
         issue_number: prNumber,
-        body: `🔄 Repository clone job queued for processing!\n\n📂 Branch: \`${ref}\`\n⏳ Please wait while we prepare your repository for analysis...`,
+        body: `**Deploying** \`${ref}\` — usually takes 2-5 minutes`,
       }
     );
 
-    console.log(`✓ Posted comment on PR #${prNumber}`);
+    // Update job with comment ID so we can edit it later
+    await job.updateData({
+      ...job.data,
+      commentId: comment.id,
+    });
+
+    console.log(
+      `Posted comment on PR #${prNumber} (Comment ID: ${comment.id})`
+    );
   } catch (error) {
     console.error(`Failed to queue clone job:`, error);
 
@@ -56,7 +64,7 @@ async function handlePullRequestOpened(payload: any) {
           owner,
           repo: repoName,
           issue_number: prNumber,
-          body: `❌ Failed to queue repository clone job.\n\n\`\`\`\n${error}\n\`\`\``,
+          body: `**Failed to queue job**: ${error}`,
         }
       );
     } catch (commentError) {
@@ -83,6 +91,20 @@ async function handlePullRequestReopened(payload: any) {
       }
     );
 
+    const { data: comment } = await octokit.request(
+      "POST /repos/{owner}/{repo}/issues/{issue_number}/comments",
+      {
+        owner,
+        repo: repoName,
+        issue_number: prNumber,
+        body: `**Redeploying** \`${ref}\` — usually takes 2-5 minutes`,
+      }
+    );
+
+    console.log(
+      `Posted comment on PR #${prNumber} (Comment ID: ${comment.id})`
+    );
+
     const job = await queue.add(JOB_NAMES.CLONE_REPOSITORY, {
       token: installationToken.token,
       repo,
@@ -91,23 +113,12 @@ async function handlePullRequestReopened(payload: any) {
       owner,
       repoName,
       installationId,
+      commentId: comment.id,
     });
 
     console.log(
-      `✓ Added clone job to queue for PR #${prNumber} (Job ID: ${job.id})`
+      `Added clone job to queue for PR #${prNumber} (Job ID: ${job.id})`
     );
-
-    await octokit.request(
-      "POST /repos/{owner}/{repo}/issues/{issue_number}/comments",
-      {
-        owner,
-        repo: repoName,
-        issue_number: prNumber,
-        body: `🔄 Repository clone job queued for processing!\n\n📂 Branch: \`${ref}\`\n⏳ Please wait while we prepare your repository for analysis...`,
-      }
-    );
-
-    console.log(`✓ Posted comment on PR #${prNumber}`);
   } catch (error) {
     console.error(`Failed to queue clone job:`, error);
 
@@ -119,7 +130,7 @@ async function handlePullRequestReopened(payload: any) {
           owner,
           repo: repoName,
           issue_number: prNumber,
-          body: `❌ Failed to queue repository clone job.\n\n\`\`\`\n${error}\n\`\`\``,
+          body: `**Failed to queue job**: ${error}`,
         }
       );
     } catch (commentError) {

@@ -1,6 +1,7 @@
 import { simpleGit } from "simple-git";
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
+import { v4 as uuidv4 } from "uuid";
 
 export async function cloneRepository(
   token: string,
@@ -12,7 +13,11 @@ export async function cloneRepository(
     const [owner, repo] = repoFullName.split("/");
 
     // Create clone directory
-    const cloneDir = join(process.cwd(), "repos", `${owner}-${repo}-${branch}`);
+    const cloneDir = join(
+      process.cwd(),
+      "repos",
+      `${owner}-${repo}-${branch}-${uuidv4()}`
+    );
     await mkdir(cloneDir, { recursive: true });
 
     // Clone with authentication using token from queue
@@ -29,7 +34,7 @@ export async function cloneRepository(
       "--single-branch",
     ]);
 
-    console.log(`✓ Successfully cloned ${repoFullName} to ${cloneDir}`);
+    console.log(`Successfully cloned ${repoFullName} to ${cloneDir}`);
 
     return cloneDir;
   } catch (error) {

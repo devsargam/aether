@@ -12,11 +12,12 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@aether/common": "workspace:*",
     "bullmq": "^5.61.0",
     "dotenv": "^16.4.7",
     "ioredis": "^5.4.2",
     "simple-git": "^3.27.0",
-    "@aether/common": "workspace:*"
+    "uuid": "^13.0.0"
   },
   "devDependencies": {
     "@types/node": "^22.15.3",
