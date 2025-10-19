@@ -6,12 +6,17 @@ import {
   createNodeMiddleware as createWebhookMiddleware,
 } from "@octokit/webhooks";
 import { createServer, IncomingMessage, ServerResponse } from "node:http";
-import { simpleGit } from "simple-git";
-import { mkdir } from "node:fs/promises";
-import { join } from "node:path";
-import { Queue } from "bullmq";
+import { Queue, QueueEvents } from "bullmq";
+import IORedis from "ioredis";
 
-const queue = new Queue("aether-pulse");
+const connection = new IORedis({
+  host: process.env.REDIS_HOST!,
+  port: Number(process.env.REDIS_PORT!),
+  maxRetriesPerRequest: null,
+});
+
+const queue = new Queue("aether-pulse", { connection });
+const queueEvents = new QueueEvents("aether-pulse", { connection });
 
 // GitHub App instance (for installation tokens)
 const githubApp = new App({
@@ -40,51 +45,42 @@ const webhooks = new Webhooks({
   secret: process.env.GITHUB_APP_WEBHOOK_SECRET!,
 });
 
-// Helper function to clone repository
-async function cloneRepository(
-  installationId: number,
-  repoFullName: string,
-  branch: string
-) {
+// Queue event listeners for job completion
+queueEvents.on("completed", async ({ jobId, returnvalue }) => {
+  console.log(`✓ Job ${jobId} completed with result:`, returnvalue);
+
   try {
-    // Get installation access token
-    const octokit = await githubApp.getInstallationOctokit(installationId);
-    const { data: installationToken } = await octokit.request(
-      "POST /app/installations/{installation_id}/access_tokens",
-      {
-        installation_id: installationId,
-      }
-    );
+    const result = returnvalue as any;
 
-    // Parse repo owner and name
-    const [owner, repo] = repoFullName.split("/");
+    if (result.success && result.cloneDir) {
+      const { owner, repoName, prNumber, branch } = result;
+      const octokit = await githubApp.getInstallationOctokit(
+        result.installationId
+      );
 
-    // Create clone directory
-    const cloneDir = join(process.cwd(), "repos", `${owner}-${repo}-${branch}`);
-    await mkdir(cloneDir, { recursive: true });
+      await octokit.request(
+        "POST /repos/{owner}/{repo}/issues/{issue_number}/comments",
+        {
+          owner,
+          repo: repoName,
+          issue_number: prNumber,
+          body: `✅ Repository successfully cloned and ready for analysis!\n\n📂 Branch: \`${branch}\`\n📍 Clone location: \`${result.cloneDir}\`\n🔨 Processing completed by forge service`,
+        }
+      );
 
-    // Clone with authentication
-    const cloneUrl = `https://x-access-token:${installationToken.token}@github.com/${repoFullName}.git`;
-
-    console.log(
-      `Cloning ${repoFullName} (branch: ${branch}) to ${cloneDir}...`
-    );
-
-    const git = simpleGit();
-    await git.clone(cloneUrl, cloneDir, [
-      "--branch",
-      branch,
-      "--single-branch",
-    ]);
-
-    console.log(`✓ Successfully cloned ${repoFullName} to ${cloneDir}`);
-
-    return cloneDir;
+      console.log(`✓ Posted success comment on PR #${prNumber}`);
+    }
   } catch (error) {
-    console.error(`Error cloning repository:`, error);
-    throw error;
+    console.error("Error handling job completion:", error);
   }
-}
+});
+
+queueEvents.on("failed", async ({ jobId, failedReason }) => {
+  console.error(`✗ Job ${jobId} failed: ${failedReason}`);
+
+  // Note: We can't easily get job data from failed event without fetching the job
+  // Error comments are best handled in the webhook handler
+});
 
 // Webhook event handlers
 webhooks.on("issues.opened", async ({ payload }) => {
@@ -117,30 +113,44 @@ webhooks.on("pull_request.opened", async ({ payload }) => {
   console.log(`PR opened in ${repo} on branch ${ref}`);
 
   try {
-    // Get installation octokit for API calls
+    // Get installation octokit and token
     const octokit = await githubApp.getInstallationOctokit(installationId);
+    const { data: installationToken } = await octokit.request(
+      "POST /app/installations/{installation_id}/access_tokens",
+      {
+        installation_id: installationId,
+      }
+    );
 
-    // Clone the repository at the PR's branch
-    const cloneDir = await cloneRepository(installationId, repo, ref);
-    console.log(`Repository cloned to: ${cloneDir}`);
+    // Add clone job to queue for forge service to process
+    const job = await queue.add("clone-repository", {
+      token: installationToken.token,
+      repo,
+      branch: ref,
+      prNumber,
+      owner,
+      repoName,
+      installationId, // Pass for later use in completion handler
+    });
 
-    // Comment on the PR to confirm cloning
+    console.log(
+      `✓ Added clone job to queue for PR #${prNumber} (Job ID: ${job.id})`
+    );
+
+    // Comment on the PR to confirm job queued
     await octokit.request(
       "POST /repos/{owner}/{repo}/issues/{issue_number}/comments",
       {
         owner,
         repo: repoName,
         issue_number: prNumber,
-        body: `✅ Repository successfully cloned and ready for analysis!\n\n📂 Branch: \`${ref}\`\n📍 Clone location: \`${cloneDir}\``,
+        body: `🔄 Repository clone job queued for processing!\n\n📂 Branch: \`${ref}\`\n⏳ Please wait while we prepare your repository for analysis...`,
       }
     );
 
     console.log(`✓ Posted comment on PR #${prNumber}`);
-
-    // TODO: Add your code analysis/processing logic here
-    // You can now work with the cloned repository
   } catch (error) {
-    console.error(`Failed to clone repository:`, error);
+    console.error(`Failed to queue clone job:`, error);
 
     // Try to comment about the error
     try {
@@ -151,7 +161,7 @@ webhooks.on("pull_request.opened", async ({ payload }) => {
           owner,
           repo: repoName,
           issue_number: prNumber,
-          body: `❌ Failed to clone repository for analysis.\n\n\`\`\`\n${error}\n\`\`\``,
+          body: `❌ Failed to queue repository clone job.\n\n\`\`\`\n${error}\n\`\`\``,
         }
       );
     } catch (commentError) {
@@ -170,29 +180,44 @@ webhooks.on("pull_request.reopened", async ({ payload }) => {
   console.log(`PR reopened in ${repo} on branch ${ref}`);
 
   try {
-    // Get installation octokit for API calls
+    // Get installation octokit and token
     const octokit = await githubApp.getInstallationOctokit(installationId);
+    const { data: installationToken } = await octokit.request(
+      "POST /app/installations/{installation_id}/access_tokens",
+      {
+        installation_id: installationId,
+      }
+    );
 
-    // Clone the repository at the PR's branch
-    const cloneDir = await cloneRepository(installationId, repo, ref);
-    console.log(`Repository cloned to: ${cloneDir}`);
+    // Add clone job to queue for forge service to process
+    const job = await queue.add("clone-repository", {
+      token: installationToken.token,
+      repo,
+      branch: ref,
+      prNumber,
+      owner,
+      repoName,
+      installationId, // Pass for later use in completion handler
+    });
 
-    // Comment on the PR to confirm cloning
+    console.log(
+      `✓ Added clone job to queue for PR #${prNumber} (Job ID: ${job.id})`
+    );
+
+    // Comment on the PR to confirm job queued
     await octokit.request(
       "POST /repos/{owner}/{repo}/issues/{issue_number}/comments",
       {
         owner,
         repo: repoName,
         issue_number: prNumber,
-        body: `✅ Repository successfully cloned and ready for analysis!\n\n📂 Branch: \`${ref}\`\n📍 Clone location: \`${cloneDir}\``,
+        body: `🔄 Repository clone job queued for processing!\n\n📂 Branch: \`${ref}\`\n⏳ Please wait while we prepare your repository for analysis...`,
       }
     );
 
     console.log(`✓ Posted comment on PR #${prNumber}`);
-
-    // TODO: Add your code analysis/processing logic here
   } catch (error) {
-    console.error(`Failed to clone repository:`, error);
+    console.error(`Failed to queue clone job:`, error);
 
     // Try to comment about the error
     try {
@@ -203,7 +228,7 @@ webhooks.on("pull_request.reopened", async ({ payload }) => {
           owner,
           repo: repoName,
           issue_number: prNumber,
-          body: `❌ Failed to clone repository for analysis.\n\n\`\`\`\n${error}\n\`\`\``,
+          body: `❌ Failed to queue repository clone job.\n\n\`\`\`\n${error}\n\`\`\``,
         }
       );
     } catch (commentError) {

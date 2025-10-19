@@ -1,0 +1,24 @@
+{
+  "name": "forge",
+  "version": "1.0.0",
+  "description": "Heavy task processing service for Aether",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch index.ts",
+    "start": "node index.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "bullmq": "^5.61.0",
+    "dotenv": "^16.4.7",
+    "ioredis": "^5.4.2",
+    "simple-git": "^3.27.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.3",
+    "tsx": "^4.19.2"
+  }
+}
