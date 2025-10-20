@@ -2,6 +2,7 @@
 
 import { LoaderIcon, LucideGithub } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { authClient } from "../auth-client";
 import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar";
 import { Button } from "./ui/button";
@@ -16,6 +17,7 @@ import {
 
 export function Nav() {
   const { data, isPending } = authClient.useSession();
+  const router = useRouter();
 
   return (
     <nav className="flex justify-between items-center p-4 border-b border-b-border">
@@ -37,7 +39,12 @@ export function Nav() {
               <DropdownMenuLabel>My Account</DropdownMenuLabel>
               <DropdownMenuItem>Profile</DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={() => authClient.signOut()}>
+              <DropdownMenuItem
+                onClick={() => {
+                  authClient.signOut();
+                  router.push("/");
+                }}
+              >
                 Log out
               </DropdownMenuItem>
             </DropdownMenuContent>
