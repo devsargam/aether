@@ -1,12 +1,16 @@
-"use client";
-
-import { authClient } from "../auth-client";
+import { headers } from "next/headers";
+import { redirect } from "next/navigation";
+import { auth } from "../auth";
 import { Nav } from "../components/nav";
 
-export default function DashboardPage() {
-  const auth = authClient.useSession();
+export default async function DashboardPage() {
+  const session = await auth.api.getSession({
+    headers: {
+      Cookie: (await headers()).get("Cookie")?.toString() ?? "",
+    },
+  });
 
-  console.log(auth.data);
+  if (!session) return redirect("/");
 
   return (
     <main className="max-w-4xl mx-auto flex min-h-screen bg-background text-foreground transition-colors">
