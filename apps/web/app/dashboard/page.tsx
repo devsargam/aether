@@ -1,7 +1,10 @@
+import { eq } from "drizzle-orm";
 import { PlusIcon } from "lucide-react";
 import { headers } from "next/headers";
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { db } from "../../db";
+import { project } from "../../db/schema";
 import { auth } from "../auth";
 import { Nav } from "../components/nav";
 import { Button } from "../components/ui/button";
@@ -14,51 +17,6 @@ import {
 } from "../components/ui/card";
 import { Input } from "../components/ui/input";
 
-const fakeProjects = [
-  {
-    id: 1,
-    name: "Aether Blog Engine",
-    domain: "blog.aether.dev",
-    repoLink: "https://github.com/aether/blog-engine",
-    lastCommit: "feat: add markdown support for posts",
-  },
-  {
-    id: 2,
-    name: "Quantum Dashboard",
-    domain: "dashboard.quantum.io",
-    repoLink: "https://github.com/quantum/dashboard",
-    lastCommit: "fix: resolve memory leak in data fetching",
-  },
-  {
-    id: 3,
-    name: "Neural API Gateway",
-    domain: "api.neural.cloud",
-    repoLink: "https://github.com/neural/api-gateway",
-    lastCommit: "chore: update dependencies to latest versions",
-  },
-  {
-    id: 4,
-    name: "Stellar Commerce",
-    domain: "shop.stellar.com",
-    repoLink: "https://github.com/stellar/commerce",
-    lastCommit: "feat: implement payment processing with Stripe",
-  },
-  {
-    id: 5,
-    name: "Cosmos Analytics",
-    domain: "analytics.cosmos.io",
-    repoLink: "https://github.com/cosmos/analytics",
-    lastCommit: "refactor: optimize database queries for performance",
-  },
-  {
-    id: 6,
-    name: "Phoenix CMS",
-    domain: "cms.phoenix.dev",
-    repoLink: "https://github.com/phoenix/cms",
-    lastCommit: "docs: update API documentation",
-  },
-];
-
 export default async function DashboardPage() {
   const session = await auth.api.getSession({
     headers: {
@@ -67,6 +25,40 @@ export default async function DashboardPage() {
   });
 
   if (!session) return redirect("/");
+
+  const userProjects = await db.query.project.findMany({
+    where: eq(project.userId, session.user.id),
+    orderBy: (project, { desc }) => [desc(project.createdAt)],
+  });
+
+  function getStatusBadge(status: string) {
+    switch (status) {
+      case "deployed":
+        return (
+          <span className="px-2 py-0.5 bg-green-500/10 text-green-500 rounded text-xs">
+            Deployed
+          </span>
+        );
+      case "building":
+        return (
+          <span className="px-2 py-0.5 bg-blue-500/10 text-blue-500 rounded text-xs">
+            Building
+          </span>
+        );
+      case "failed":
+        return (
+          <span className="px-2 py-0.5 bg-red-500/10 text-red-500 rounded text-xs">
+            Failed
+          </span>
+        );
+      default:
+        return (
+          <span className="px-2 py-0.5 bg-yellow-500/10 text-yellow-500 rounded text-xs">
+            Pending
+          </span>
+        );
+    }
+  }
 
   return (
     <main className="max-w-4xl mx-auto flex min-h-screen bg-background text-foreground transition-colors">
@@ -82,13 +74,29 @@ export default async function DashboardPage() {
           </Link>
         </div>
         <div className="grid md:grid-cols-2 grid-cols-1 gap-4 p-6 pt-0">
-          {fakeProjects.length > 0 ? (
-            fakeProjects.map((project) => (
-              <Card key={project.id}>
+          {userProjects.length > 0 ? (
+            userProjects.map((proj) => (
+              <Card key={proj.id}>
                 <CardHeader>
-                  <CardTitle>{project.name}</CardTitle>
+                  <div className="flex items-start justify-between">
+                    <CardTitle className="text-base">{proj.name}</CardTitle>
+                    {getStatusBadge(proj.status)}
+                  </div>
                   <CardDescription>
-                    <span className="text-blue-500">{project.domain}</span>
+                    {proj.deploymentUrl ? (
+                      <a
+                        href={proj.deploymentUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-blue-500 hover:underline"
+                      >
+                        {proj.deploymentUrl}
+                      </a>
+                    ) : (
+                      <span className="text-muted-foreground">
+                        Deployment pending...
+                      </span>
+                    )}
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-2">
@@ -97,27 +105,27 @@ export default async function DashboardPage() {
                       Repository:
                     </span>
                     <a
-                      href={project.repoLink}
+                      href={`https://github.com/${proj.repositoryFullName}`}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="text-sm text-blue-500 hover:underline truncate"
                     >
-                      {project.repoLink}
+                      {proj.repositoryFullName}
                     </a>
                   </div>
-                  <div className="flex items-start gap-2">
+                  <div className="flex items-center gap-2">
                     <span className="text-sm font-medium text-muted-foreground">
-                      Last commit:
+                      Branch:
                     </span>
                     <span className="text-sm text-foreground">
-                      {project.lastCommit}
+                      {proj.defaultBranch}
                     </span>
                   </div>
                 </CardContent>
               </Card>
             ))
           ) : (
-            <div className="col-span-2 flex flex-col items-center justify-center gap-4">
+            <div className="col-span-2 flex flex-col items-center justify-center gap-4 py-12">
               <p className="text-muted-foreground">
                 You don't have any projects yet.
               </p>

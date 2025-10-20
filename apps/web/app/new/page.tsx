@@ -1,5 +1,6 @@
+import { Suspense } from "react";
 import { Nav } from "../components/nav";
-import { Button } from "../components/ui/button";
+import { ImportRepositories } from "./import-repositories";
 
 export default function NewPage() {
   return (
@@ -16,9 +17,9 @@ export default function NewPage() {
               Import a repository from GitHub to get started with your
               deployment.
             </p>
-            <Button variant="outline" size="lg">
-              Import Repository from GitHub
-            </Button>
+            <Suspense fallback={<div>Loading...</div>}>
+              <ImportRepositories />
+            </Suspense>
           </div>
         </div>
       </div>

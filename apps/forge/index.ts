@@ -1,16 +1,17 @@
-import "dotenv/config";
-import { Worker } from "bullmq";
-import IORedis from "ioredis";
 import { JOB_NAMES, QUEUE_NAME } from "@aether/common";
-import { cloneRepository } from "./utils";
-import { detectProjectType } from "./project-detector";
+import { Worker } from "bullmq";
+import "dotenv/config";
+import IORedis from "ioredis";
+import { updateDeploymentStatus, updateProjectStatus } from "./db";
 import {
   buildAndRunInDocker,
-  stopContainer,
   removeImage,
+  stopContainer,
 } from "./docker-runner";
 import { allocatePort, releasePort } from "./port-manager";
-import { startProxyServer, registerApp, unregisterApp } from "./proxy-server";
+import { detectProjectType } from "./project-detector";
+import { registerApp, startProxyServer, unregisterApp } from "./proxy-server";
+import { cloneRepository } from "./utils";
 
 const connection = new IORedis({
   host: process.env.REDIS_HOST!,
@@ -27,13 +28,29 @@ const worker = new Worker(
     console.log(`Processing job ${job.id}: ${job.name}`);
 
     if (job.name === JOB_NAMES.CLONE_REPOSITORY) {
-      const { token, repo, branch, prNumber, owner, repoName, commentId } =
-        job.data;
+      const {
+        token,
+        repo,
+        branch,
+        prNumber,
+        owner,
+        repoName,
+        commentId,
+        projectId,
+        deploymentId,
+      } = job.data;
       let allocatedPort: number | undefined;
       let containerId: string | undefined;
       let imageName: string | undefined;
 
       try {
+        // Update status to building
+        if (projectId && deploymentId) {
+          await updateProjectStatus(projectId, "building");
+          await updateDeploymentStatus(deploymentId, "building");
+          console.log(`📦 Updated project ${projectId} status to building`);
+        }
+
         // Step 1: Clone the repository
         console.log(`\nStep 1: Cloning repository...`);
         const cloneDir = await cloneRepository(token, repo, branch);
@@ -54,6 +71,8 @@ const worker = new Worker(
             repoName,
             installationId: job.data.installationId,
             commentId,
+            projectId,
+            deploymentId,
             error: "Not a Next.js project",
           };
         }
@@ -69,6 +88,8 @@ const worker = new Worker(
             repoName,
             installationId: job.data.installationId,
             commentId,
+            projectId,
+            deploymentId,
             error: "Project does not use pnpm (no pnpm-lock.yaml found)",
           };
         }
@@ -109,6 +130,8 @@ const worker = new Worker(
             repoName,
             installationId: job.data.installationId,
             commentId,
+            projectId,
+            deploymentId,
             error: dockerResult.error,
             buildLogs: dockerResult.buildLogs,
           };
@@ -139,6 +162,8 @@ const worker = new Worker(
           repoName,
           installationId: job.data.installationId,
           commentId,
+          projectId,
+          deploymentId,
           buildLogs: dockerResult.buildLogs,
           containerId,
           imageName,
