@@ -108,53 +108,55 @@ export default async function DashboardPage() {
         <div className="grid md:grid-cols-2 grid-cols-1 gap-4 p-6 pt-0">
           {userProjects.length > 0 ? (
             userProjects.map((proj) => (
-              <Card key={proj.id}>
-                <CardHeader>
-                  <div className="flex items-start justify-between">
-                    <CardTitle className="text-base">{proj.name}</CardTitle>
-                    {getStatusBadge(proj.status)}
-                  </div>
-                  <CardDescription>
-                    {proj.deploymentUrl ? (
+              <Link href={`/dashboard/${proj.id}`} key={proj.id}>
+                <Card key={proj.id}>
+                  <CardHeader>
+                    <div className="flex items-start justify-between">
+                      <CardTitle className="text-base">{proj.name}</CardTitle>
+                      {getStatusBadge(proj.status)}
+                    </div>
+                    <CardDescription>
+                      {proj.deploymentUrl ? (
+                        <a
+                          href={proj.deploymentUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-blue-500 hover:underline"
+                        >
+                          {proj.deploymentUrl}
+                        </a>
+                      ) : (
+                        <span className="text-muted-foreground">
+                          Deployment pending...
+                        </span>
+                      )}
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-2">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium text-muted-foreground">
+                        Repository:
+                      </span>
                       <a
-                        href={proj.deploymentUrl}
+                        href={`https://github.com/${proj.repositoryFullName}`}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="text-blue-500 hover:underline"
+                        className="text-sm text-blue-500 hover:underline truncate"
                       >
-                        {proj.deploymentUrl}
+                        {proj.repositoryFullName}
                       </a>
-                    ) : (
-                      <span className="text-muted-foreground">
-                        Deployment pending...
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium text-muted-foreground">
+                        Branch:
                       </span>
-                    )}
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-2">
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-medium text-muted-foreground">
-                      Repository:
-                    </span>
-                    <a
-                      href={`https://github.com/${proj.repositoryFullName}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-sm text-blue-500 hover:underline truncate"
-                    >
-                      {proj.repositoryFullName}
-                    </a>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-medium text-muted-foreground">
-                      Branch:
-                    </span>
-                    <span className="text-sm text-foreground">
-                      {proj.defaultBranch}
-                    </span>
-                  </div>
-                </CardContent>
-              </Card>
+                      <span className="text-sm text-foreground">
+                        {proj.defaultBranch}
+                      </span>
+                    </div>
+                  </CardContent>
+                </Card>
+              </Link>
             ))
           ) : (
             <div className="col-span-2 flex flex-col items-center justify-center gap-4 py-12">
