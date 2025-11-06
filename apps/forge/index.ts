@@ -45,17 +45,24 @@ const worker = new Worker(
       let imageName: string | undefined;
 
       try {
-        // Update status to building
+        // Update status to cloning
         if (projectId && deploymentId) {
-          await updateProjectStatus(projectId, "building");
-          await updateDeploymentStatus(deploymentId, "building");
-          console.log(`📦 Updated project ${projectId} status to building`);
+          await updateProjectStatus(projectId, "cloning");
+          await updateDeploymentStatus(deploymentId, "cloning");
+          console.log(`📦 Updated project ${projectId} status to cloning`);
         }
 
         // Step 1: Clone the repository
         console.log(`\nStep 1: Cloning repository...`);
         const cloneDir = await cloneRepository(token, repo, branch);
         console.log(`Repository cloned to: ${cloneDir}`);
+
+        // Update status to detecting
+        if (projectId && deploymentId) {
+          await updateProjectStatus(projectId, "detecting");
+          await updateDeploymentStatus(deploymentId, "detecting");
+          console.log(`🔍 Updated project ${projectId} status to detecting`);
+        }
 
         // Step 2: Detect if it's a Next.js project with pnpm
         console.log(`\nStep 2: Checking project type...`);
@@ -97,6 +104,13 @@ const worker = new Worker(
 
         console.log(`Next.js project with pnpm detected`);
 
+        // Update status to allocating
+        if (projectId && deploymentId) {
+          await updateProjectStatus(projectId, "allocating");
+          await updateDeploymentStatus(deploymentId, "allocating");
+          console.log(`🔧 Updated project ${projectId} status to allocating`);
+        }
+
         // Step 3: Allocate a port
         console.log(`\nStep 3: Allocating port...`);
         allocatedPort = await allocatePort();
@@ -106,6 +120,13 @@ const worker = new Worker(
         const appId = generateUniqueDomainName(usedDomains);
         usedDomains.add(appId);
         console.log(`Generated domain: ${appId}`);
+
+        // Update status to building
+        if (projectId && deploymentId) {
+          await updateProjectStatus(projectId, "building");
+          await updateDeploymentStatus(deploymentId, "building");
+          console.log(`🏗️ Updated project ${projectId} status to building`);
+        }
 
         // Step 5: Build and run in Docker
         console.log(
@@ -144,6 +165,13 @@ const worker = new Worker(
         }
 
         console.log(`Build and run completed successfully`);
+
+        // Update status to deploying
+        if (projectId && deploymentId) {
+          await updateProjectStatus(projectId, "deploying");
+          await updateDeploymentStatus(deploymentId, "deploying");
+          console.log(`🚀 Updated project ${projectId} status to deploying`);
+        }
 
         // Step 6: Register with reverse proxy
         console.log(`\nStep 6: Registering with reverse proxy...`);

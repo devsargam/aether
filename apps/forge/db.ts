@@ -11,34 +11,50 @@ export const db = drizzle(pool);
 // Helper function to update project status
 export async function updateProjectStatus(
   projectId: string,
-  status: "pending" | "building" | "deployed" | "failed"
+  status:
+    | "pending"
+    | "cloning"
+    | "detecting"
+    | "allocating"
+    | "building"
+    | "deploying"
+    | "deployed"
+    | "failed",
 ) {
   await db.execute(
-    sql`UPDATE project SET status = ${status}, updated_at = NOW() WHERE id = ${projectId}`
+    sql`UPDATE project SET status = ${status}, updated_at = NOW() WHERE id = ${projectId}`,
   );
 }
 
 // Helper function to update deployment status
 export async function updateDeploymentStatus(
   deploymentId: string,
-  status: "pending" | "building" | "success" | "failed",
+  status:
+    | "pending"
+    | "cloning"
+    | "detecting"
+    | "allocating"
+    | "building"
+    | "deploying"
+    | "success"
+    | "failed",
   data?: {
     url?: string;
     error?: string;
     buildLogs?: string;
-  }
+  },
 ) {
   if (data?.url) {
     await db.execute(
-      sql`UPDATE deployment SET status = ${status}, url = ${data.url}, completed_at = NOW() WHERE id = ${deploymentId}`
+      sql`UPDATE deployment SET status = ${status}, url = ${data.url}, completed_at = NOW() WHERE id = ${deploymentId}`,
     );
   } else if (data?.error) {
     await db.execute(
-      sql`UPDATE deployment SET status = ${status}, error = ${data.error}, build_logs = ${data.buildLogs || null}, completed_at = NOW() WHERE id = ${deploymentId}`
+      sql`UPDATE deployment SET status = ${status}, error = ${data.error}, build_logs = ${data.buildLogs || null}, completed_at = NOW() WHERE id = ${deploymentId}`,
     );
   } else {
     await db.execute(
-      sql`UPDATE deployment SET status = ${status} WHERE id = ${deploymentId}`
+      sql`UPDATE deployment SET status = ${status} WHERE id = ${deploymentId}`,
     );
   }
 }

@@ -35,25 +35,57 @@ export default async function DashboardPage() {
     switch (status) {
       case "deployed":
         return (
-          <span className="px-2 py-0.5 bg-green-500/10 text-green-500 rounded text-xs">
+          <span className="px-2 py-0.5 bg-green-500/10 text-green-500 rounded text-xs flex items-center gap-1">
+            <span className="size-1.5 bg-green-500 rounded-full animate-pulse" />
             Deployed
+          </span>
+        );
+      case "cloning":
+        return (
+          <span className="px-2 py-0.5 bg-blue-500/10 text-blue-500 rounded text-xs flex items-center gap-1">
+            <span className="size-1.5 bg-blue-500 rounded-full animate-pulse" />
+            Cloning
+          </span>
+        );
+      case "detecting":
+        return (
+          <span className="px-2 py-0.5 bg-blue-500/10 text-blue-500 rounded text-xs flex items-center gap-1">
+            <span className="size-1.5 bg-blue-500 rounded-full animate-pulse" />
+            Detecting
+          </span>
+        );
+      case "allocating":
+        return (
+          <span className="px-2 py-0.5 bg-blue-500/10 text-blue-500 rounded text-xs flex items-center gap-1">
+            <span className="size-1.5 bg-blue-500 rounded-full animate-pulse" />
+            Allocating
           </span>
         );
       case "building":
         return (
-          <span className="px-2 py-0.5 bg-blue-500/10 text-blue-500 rounded text-xs">
+          <span className="px-2 py-0.5 bg-blue-500/10 text-blue-500 rounded text-xs flex items-center gap-1">
+            <span className="size-1.5 bg-blue-500 rounded-full animate-pulse" />
             Building
+          </span>
+        );
+      case "deploying":
+        return (
+          <span className="px-2 py-0.5 bg-purple-500/10 text-purple-500 rounded text-xs flex items-center gap-1">
+            <span className="size-1.5 bg-purple-500 rounded-full animate-pulse" />
+            Deploying
           </span>
         );
       case "failed":
         return (
-          <span className="px-2 py-0.5 bg-red-500/10 text-red-500 rounded text-xs">
+          <span className="px-2 py-0.5 bg-red-500/10 text-red-500 rounded text-xs flex items-center gap-1">
+            <span className="size-1.5 bg-red-500 rounded-full" />
             Failed
           </span>
         );
       default:
         return (
-          <span className="px-2 py-0.5 bg-yellow-500/10 text-yellow-500 rounded text-xs">
+          <span className="px-2 py-0.5 bg-yellow-500/10 text-yellow-500 rounded text-xs flex items-center gap-1">
+            <span className="size-1.5 bg-yellow-500 rounded-full" />
             Pending
           </span>
         );
