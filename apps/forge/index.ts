@@ -8,6 +8,7 @@ import {
   removeImage,
   stopContainer,
 } from "./docker-runner";
+import { generateUniqueDomainName } from "./domain-generator";
 import { allocatePort, releasePort } from "./port-manager";
 import { detectProjectType } from "./project-detector";
 import { registerApp, startProxyServer, unregisterApp } from "./proxy-server";
@@ -17,7 +18,6 @@ const connection = new IORedis({
   host: process.env.REDIS_HOST!,
   port: Number(process.env.REDIS_PORT!),
   maxRetriesPerRequest: null,
-  password: process.env.REDIS_PASSWORD!,
 });
 
 // Start the reverse proxy server
@@ -101,16 +101,21 @@ const worker = new Worker(
         console.log(`\nStep 3: Allocating port...`);
         allocatedPort = await allocatePort();
 
-        // Step 4: Build and run in Docker
+        // Step 4: Generate a friendly domain name
+        console.log(`\nStep 4: Generating friendly domain name...`);
+        const appId = generateUniqueDomainName(usedDomains);
+        usedDomains.add(appId);
+        console.log(`Generated domain: ${appId}`);
+
+        // Step 5: Build and run in Docker
         console.log(
-          `\nStep 4: Building and running 'pnpm run build' in Docker...`
+          `\nStep 5: Building and running 'pnpm run build' in Docker...`,
         );
-        const appId = `${owner}-${repoName}-pr${prNumber}`;
         const dockerResult = await buildAndRunInDocker(
           cloneDir,
           allocatedPort,
           appId,
-          600000
+          600000,
         );
 
         containerId = dockerResult.containerId;
@@ -140,8 +145,8 @@ const worker = new Worker(
 
         console.log(`Build and run completed successfully`);
 
-        // Step 5: Register with reverse proxy
-        console.log(`\nStep 5: Registering with reverse proxy...`);
+        // Step 6: Register with reverse proxy
+        console.log(`\nStep 6: Registering with reverse proxy...`);
         const proxyUrl = registerApp(appId, allocatedPort);
 
         // Track running container for cleanup
@@ -190,7 +195,7 @@ const worker = new Worker(
       }
     }
   },
-  { connection }
+  { connection },
 );
 
 worker.on("completed", async (job) => {
@@ -205,7 +210,7 @@ worker.on("completed", async (job) => {
 
 worker.on("failed", async (job, err) => {
   console.error(
-    `\nJob ${job?.id} (${job?.name}) has failed with ${err.message}`
+    `\nJob ${job?.id} (${job?.name}) has failed with ${err.message}`,
   );
 
   // Cleanup on failure
@@ -225,6 +230,9 @@ const runningContainers = new Map<
   { containerId: string; imageName: string; port: number; appId: string }
 >();
 
+// Track used domain names for uniqueness
+const usedDomains = new Set<string>();
+
 // Graceful shutdown handler
 async function cleanup() {
   console.log("\n\nShutting down gracefully...");
@@ -238,6 +246,7 @@ async function cleanup() {
       await removeImage(info.imageName).catch(console.error);
       releasePort(info.port);
       unregisterApp(info.appId);
+      usedDomains.delete(info.appId);
     }
   }
 
@@ -254,7 +263,7 @@ console.log("\nForge worker started and listening for jobs...");
 console.log(
   `Connected to Redis at ${process.env.REDIS_HOST || "localhost"}:${
     process.env.REDIS_PORT || 6379
-  }`
+  }`,
 );
 console.log(`Docker enabled - will build and run Next.js projects with pnpm`);
 console.log(`\nWaiting for jobs...\n`);
